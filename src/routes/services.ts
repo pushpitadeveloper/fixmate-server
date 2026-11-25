@@ -5,7 +5,15 @@ import { verifyRole, verifyToken } from "../middlewares/auth";
 
 const router = Router();
 
-// All services - public, with SERVER-SIDE filter / search / sort - Challenge 1
+// Helper - ID jekono format ei khujbe
+function idQuery(id: string) {
+  if (ObjectId.isValid(id)) {
+    return { $or: [{ _id: new ObjectId(id) }, { _id: id }] };
+  }
+  return { _id: id };
+}
+
+// All services - public, with SERVER-SIDE filter / search / sort
 router.get("/", async (req, res) => {
   try {
     const db = await getDb();
@@ -34,8 +42,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const db = await getDb();
-    if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ message: "Service not found" });
-    const service = await db.collection("services").findOne({ _id: new ObjectId(req.params.id) });
+    const service = await db.collection("services").findOne(idQuery(req.params.id));
     if (!service) return res.status(404).json({ message: "Service not found" });
     res.json(service);
   } catch (err: any) {
@@ -43,7 +50,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Create service - admin + technician - Challenge 1
+// Create service - admin + technician
 router.post("/", verifyToken, verifyRole("admin", "technician"), async (req: any, res) => {
   try {
     const db = await getDb();
@@ -80,29 +87,25 @@ router.post("/", verifyToken, verifyRole("admin", "technician"), async (req: any
 router.patch("/:id", verifyToken, verifyRole("admin", "technician"), async (req: any, res) => {
   try {
     const db = await getDb();
-    if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ message: "Service not found" });
-    const existing: any = await db.collection("services").findOne({ _id: new ObjectId(req.params.id) });
+    const existing: any = await db.collection("services").findOne(idQuery(req.params.id));
     if (!existing) return res.status(404).json({ message: "Service not found" });
     const userRole = req.user?.role || req.user?.user?.role;
     const userEmail = req.user?.email || req.user?.user?.email;
     const userName = req.user?.name || req.user?.user?.name;
-    // Technician can only edit own service
     if (userRole === "technician" && existing.technicianEmail && existing.technicianEmail !== userEmail && existing.technicianName !== userName) {
       return res.status(403).json({ message: "You do not have permission to edit this service" });
     }
-    // Only admin can approve / reject
     if ((req.body.status === "Approved" || req.body.status === "Rejected") && userRole !== "admin") {
       return res.status(403).json({ message: "Only admin can approve or reject a service" });
     }
     const update: any = { ...req.body, updatedAt: new Date() };
     if (update.price) update.price = Number(update.price);
     if (update.basePrice) update.basePrice = Number(update.basePrice);
-    // Technician edit -> again Pending for admin approval
     if (userRole === "technician" && (update.title || update.description || update.price || update.basePrice)) {
       update.status = "Pending";
     }
     delete update._id;
-    await db.collection("services").updateOne({ _id: new ObjectId(req.params.id) }, { $set: update });
+    await db.collection("services").updateOne(idQuery(req.params.id), { $set: update });
     res.json({ message: "Service updated successfully" });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
@@ -113,15 +116,14 @@ router.patch("/:id", verifyToken, verifyRole("admin", "technician"), async (req:
 router.delete("/:id", verifyToken, verifyRole("admin", "technician"), async (req: any, res) => {
   try {
     const db = await getDb();
-    if (!ObjectId.isValid(req.params.id)) return res.status(404).json({ message: "Service not found" });
-    const existing: any = await db.collection("services").findOne({ _id: new ObjectId(req.params.id) });
+    const existing: any = await db.collection("services").findOne(idQuery(req.params.id));
     if (!existing) return res.status(404).json({ message: "Service not found" });
     const userRole = req.user?.role || req.user?.user?.role;
     const userEmail = req.user?.email || req.user?.user?.email;
     if (userRole === "technician" && existing.technicianEmail && existing.technicianEmail !== userEmail) {
       return res.status(403).json({ message: "You do not have permission to delete this service" });
     }
-    await db.collection("services").deleteOne({ _id: new ObjectId(req.params.id) });
+    await db.collection("services").deleteOne(idQuery(req.params.id));
     res.json({ message: "Service deleted successfully" });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
