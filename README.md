@@ -1,39 +1,27 @@
-# FixMate - Server
+# FixMate Server
 
-FixMate server - Express + TypeScript + MongoDB
+Backend API for FixMate - Home Repair & Maintenance Service Booking Platform.
 
-## API
-- GET /api/services - Sob service
-- POST /api/services - Service banao (Admin)
-- GET /api/services/:id - Ekta service
-- POST /api/bookings - Booking koro (Customer)
-- GET /api/bookings/my - Amar bookings
-- GET /api/bookings/technician - Technician er kaj
-- PATCH /api/bookings/:id/status - Status update
-- POST /api/payments/create-checkout - Stripe checkout
-- GET /api/payments/verify - Payment verify
+Live API: https://fixmate-server-4w1b.onrender.com
+Client: https://fixmate-client-virid.vercel.app
 
-## Tech
-- Express + TypeScript
-- MongoDB
-- Stripe
-- JWT / BetterAuth token verify
+## Tech Stack
+- Node.js + 【entity-Express¦canonical_name=Express】
+- 【entity-MongoDB¦canonical_name=MongoDB】 + Mongoose
+- Better Auth (Google + Email)
+- Stripe (Card Payment)
+- JWT Auth Middleware
+
+## Main API Endpoints
+- GET /api/services - All services
+- GET /api/services/:id - Single service
+- POST /api/bookings - Create booking
+- GET /api/bookings - All bookings
+- POST /api/payments - Create payment / Stripe checkout
+- POST /api/payments/webhook - Stripe webhook
+- GET /api/auth/* - Auth routes
 
 ## Run Locally
 ```bash
 npm install
 npm run dev
-```
-Server: http://localhost:5000
-
-## Env - .env
-```
-PORT=5000
-MONGODB_URI=tomar_mongo_uri
-CLIENT_URL=http://localhost:3000
-STRIPE_SECRET_KEY=sk_test_tomar_key
-JWT_SECRET=tomar_secret
-```
-
-## Live
-- Server:
