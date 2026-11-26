@@ -12,9 +12,21 @@ import servicesRouter from './routes/services';
 const app = express();
 const port = process.env.PORT || 5000;
 
+// FIX: Live Vercel URL explicitly allow - age sudhu localhost + CLIENT_URL chilo, tai live e 404 / CORS hoto
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://fixmate-client-virid.vercel.app',
+  process.env.CLIENT_URL,
+].filter(Boolean) as string[];
+
 app.use(
   cors({
-    origin: ['http://localhost:3000', process.env.CLIENT_URL || 'http://localhost:3000'],
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (origin.endsWith('.vercel.app')) return cb(null, true);
+      return cb(null, true);
+    },
     credentials: true,
   }),
 );
@@ -28,7 +40,7 @@ app.use('/api/services', servicesRouter);
 app.use('/api/bookings', bookingsRouter);
 app.use('/api/payments', paymentsRouter);
 
-// ---- Users - chilo na, tai Total Users 0 dekhaito ----
+// ---- Users ----
 function idQuery(id: string): any {
   if (ObjectId.isValid(id)) {
     return { $or: [{ _id: new ObjectId(id) }, { _id: id as any }, { id: id as any }] };
@@ -36,7 +48,6 @@ function idQuery(id: string): any {
   return { $or: [{ _id: id as any }, { id: id as any }] };
 }
 
-// GET all users - Better Auth "user" collection theke, na pele "users" theke
 app.get('/api/users', async (req, res) => {
   try {
     const db = await getDb();
@@ -49,7 +60,6 @@ app.get('/api/users', async (req, res) => {
         users = await db.collection('users').find({}).toArray();
       } catch {}
     }
-    // _id na thakle id ke _id banay dao, client _id chay
     const out = users.map((u: any) => ({
       ...u,
       _id: u._id ? String(u._id) : u.id,
@@ -61,17 +71,30 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// PATCH user role - admin dashboard theke role change
 app.patch('/api/users/:id', async (req: any, res) => {
   try {
     const db = await getDb();
     const { role } = req.body || {};
     if (!role) return res.status(400).json({ message: 'Role is required' });
-    const q = idQuery(req.params.id);
-    // Dui collection ei try koro
+    const id = req.params.id;
+    const q = idQuery(id);
     let r1: any = await db.collection('user').updateOne(q, { $set: { role, updatedAt: new Date() } });
     if (r1.matchedCount === 0) {
-      await db.collection('users').updateOne(q, { $set: { role, updatedAt: new Date() } });
+      r1 = await db.collection('users').updateOne(q, { $set: { role, updatedAt: new Date() } });
+    }
+    if (r1.matchedCount === 0) {
+      for (const col of ['user', 'users']) {
+        const all = await db.collection(col).find({}).toArray();
+        const found = all.find((u: any) => String(u._id) === String(id) || String(u.id) === String(id));
+        if (found) {
+          await db.collection(col).updateOne({ _id: found._id }, { $set: { role, updatedAt: new Date() } });
+          r1.matchedCount = 1;
+          break;
+        }
+      }
+    }
+    if (r1.matchedCount === 0) {
+      return res.status(404).json({ message: 'User not found' });
     }
     res.json({ message: 'User role updated successfully' });
   } catch (err: any) {

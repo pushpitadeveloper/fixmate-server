@@ -4,16 +4,29 @@ import { getDb } from "../config/db";
 
 const router = Router();
 
-// Helper - ID jekono format ei khujbe
+// Helper - ID jekono format ei khujbe: ObjectId, string, id field
 function idQuery(id: string): any {
+  const ors: any[] = [{ _id: id as any }, { id: id as any }];
   if (ObjectId.isValid(id)) {
-    return { $or: [{ _id: new ObjectId(id) }, { _id: id as any }] };
+    ors.unshift({ _id: new ObjectId(id) });
   }
-  return { _id: id };
+  return { $or: ors };
 }
 
-// Dashboard theke asle role header/body teo thakte pare, na thakle admin dhore nibo
-// Karon client already admin check kore, ar cross-origin e cookie jay na
+// ID diye service khujar sobcheye safe way - 3 ta try
+async function findServiceById(db: any, id: string) {
+  // 1. Normal idQuery
+  let s: any = await db.collection("services").findOne(idQuery(id));
+  if (s) return s;
+  // 2. Direct string _id
+  s = await db.collection("services").findOne({ _id: id as any });
+  if (s) return s;
+  // 3. Scan kore String(_id) milay - ObjectId vs string mismatch er jonno
+  const all = await db.collection("services").find({}).toArray();
+  const found = all.find((x: any) => String(x._id) === String(id) || String(x.id) === String(id));
+  return found || null;
+}
+
 function getRole(req: any): string | undefined {
   return (
     req.user?.role ||
@@ -21,6 +34,7 @@ function getRole(req: any): string | undefined {
     req.headers?.["x-user-role"] ||
     req.body?._role ||
     req.body?.userRole ||
+    req.body?.role ||
     undefined
   );
 }
@@ -66,7 +80,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const db = await getDb();
-    const service = await db.collection("services").findOne(idQuery(req.params.id));
+    const service = await findServiceById(db, req.params.id);
     if (!service) return res.status(404).json({ message: "Service not found" });
     res.json(service);
   } catch (err: any) {
@@ -75,7 +89,6 @@ router.get("/:id", async (req, res) => {
 });
 
 // Create service - admin + technician
-// FIX: verifyToken / verifyRole tule dewa - cross-origin e cookie jay na tai 401 hoye Create fail hoto
 router.post("/", async (req: any, res) => {
   try {
     const db = await getDb();
@@ -85,7 +98,6 @@ router.post("/", async (req: any, res) => {
     const finalPrice = Number(basePrice ?? price);
     if (!finalPrice || finalPrice <= 0) return res.status(400).json({ message: "Valid price is required" });
     const userRole = getRole(req);
-    // Dashboard theke asle role na thakleo admin dhore Approved korbo, na hole Pending hoye jeto
     const status = userRole === "technician" ? "Pending" : (req.body.status || "Approved");
     const result = await db.collection("services").insertOne({
       title, category,
@@ -109,34 +121,42 @@ router.post("/", async (req: any, res) => {
   }
 });
 
-// Update service - admin can Approve/Reject, technician can edit own -> Pending again
-// FIX: verifyToken / verifyRole tule dewa - tai Approve ekhon dashboard theke kaj korbe
+// Update service - admin can Approve/Reject any status, technician can edit own -> Pending again
+// FIX: Approve / Reject 2 tai jekono status theke kaj korbe, idQuery 3 vabe khujbe tai 404 asbe na
 router.patch("/:id", async (req: any, res) => {
   try {
     const db = await getDb();
-    const existing: any = await db.collection("services").findOne(idQuery(req.params.id));
-    if (!existing) return res.status(404).json({ message: "Service not found" });
+    const id = req.params.id;
+    const existing: any = await findServiceById(db, id);
+    if (!existing) {
+      console.log("PATCH service not found, id:", id);
+      return res.status(404).json({ message: "Service not found" });
+    }
     const userRole = getRole(req);
     const userEmail = getEmail(req);
     const userName = getName(req);
-    // Sudhu tokhoni block korbo jokhon NISHCHIT technician ar onner service
-    // Role jana na thakle (dashboard) block korbo na
     if (userRole === "technician" && existing.technicianEmail && existing.technicianEmail !== userEmail && existing.technicianName !== userName) {
       return res.status(403).json({ message: "You do not have permission to edit this service" });
     }
-    if ((req.body.status === "Approved" || req.body.status === "Rejected") && userRole && userRole !== "admin") {
+    if ((req.body.status === "Approved" || req.body.status === "Rejected") && userRole && userRole !== "admin" && userRole !== "Admin") {
       return res.status(403).json({ message: "Only admin can approve or reject a service" });
     }
     const update: any = { ...req.body, updatedAt: new Date() };
+    delete update._role;
+    delete update._email;
+    delete update.userRole;
     if (update.price) update.price = Number(update.price);
     if (update.basePrice) update.basePrice = Number(update.basePrice);
     if (userRole === "technician" && (update.title || update.description || update.price || update.basePrice)) {
       update.status = "Pending";
     }
     delete update._id;
-    await db.collection("services").updateOne(idQuery(req.params.id), { $set: update });
-    res.json({ message: "Service updated successfully" });
+    delete update.id;
+    // Asol _id diye update - String vs ObjectId mismatch er jonno existing._id use korbo
+    await db.collection("services").updateOne({ _id: existing._id }, { $set: update });
+    res.json({ message: "Service updated successfully", status: update.status });
   } catch (err: any) {
+    console.log("PATCH service error:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
@@ -145,14 +165,14 @@ router.patch("/:id", async (req: any, res) => {
 router.delete("/:id", async (req: any, res) => {
   try {
     const db = await getDb();
-    const existing: any = await db.collection("services").findOne(idQuery(req.params.id));
+    const existing: any = await findServiceById(db, req.params.id);
     if (!existing) return res.status(404).json({ message: "Service not found" });
     const userRole = getRole(req);
     const userEmail = getEmail(req);
     if (userRole === "technician" && existing.technicianEmail && existing.technicianEmail !== userEmail) {
       return res.status(403).json({ message: "You do not have permission to delete this service" });
     }
-    await db.collection("services").deleteOne(idQuery(req.params.id));
+    await db.collection("services").deleteOne({ _id: existing._id });
     res.json({ message: "Service deleted successfully" });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
