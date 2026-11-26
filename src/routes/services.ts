@@ -6,9 +6,9 @@ import { verifyRole, verifyToken } from "../middlewares/auth";
 const router = Router();
 
 // Helper - ID jekono format ei khujbe
-function idQuery(id: string) {
+function idQuery(id: string): any {
   if (ObjectId.isValid(id)) {
-    return { $or: [{ _id: new ObjectId(id) }, { _id: id }] };
+    return { $or: [{ _id: new ObjectId(id) }, { _id: id as any }] };
   }
   return { _id: id };
 }
