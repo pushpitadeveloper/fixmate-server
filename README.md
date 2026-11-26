@@ -4,6 +4,8 @@ Express and MongoDB API for FixMate. Handles services, bookings, payments and us
 
 **Live Server:** https://fixmate-server-4w1b.onrender.com
 **Live Client:** https://fixmate-client-virid.vercel.app
+**Client Repo:** https://github.com/pushpitadeveloper/fixmate-client
+**Server Repo:** https://github.com/pushpitadeveloper/fixmate-server
 
 ## Features
 
@@ -67,7 +69,7 @@ These accounts exist in the live database:
 ## Run Locally
 
 ```bash
-git clone <server-repo-url>
+git clone https://github.com/pushpitadeveloper/fixmate-server
 cd fixmate-server
 npm install
 ```
