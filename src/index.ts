@@ -12,24 +12,37 @@ import servicesRouter from './routes/services';
 const app = express();
 const port = process.env.PORT || 5000;
 
-// FIX: Live Vercel URL explicitly allow - age sudhu localhost + CLIENT_URL chilo, tai live e 404 / CORS hoto
+// CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000',
   'https://fixmate-client-virid.vercel.app',
   process.env.CLIENT_URL,
 ].filter(Boolean) as string[];
 
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      if (origin.endsWith('.vercel.app')) return cb(null, true);
-      return cb(null, true);
-    },
-    credentials: true,
-  }),
-);
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) return callback(null, true);
+    // Allow localhost, specific vercel domains, or any *.vercel.app URL
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Keep it flexible for dev
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], // PATCH মেথড Allow করা হলো
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-user-role',
+    'x-user-email',
+    'x-user-name'
+  ], // কাস্টম হেডারগুলো Allow করা হলো
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+// এই একটি লাইনই CORS এবং OPTIONS রিকোয়েস্ট হ্যান্ডেল করার জন্য যথেষ্ট
+app.use(cors(corsOptions));
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
