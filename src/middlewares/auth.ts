@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from 'express';
 import jwt from "jsonwebtoken";
 import { getDb } from "../config/db";
+import crypto from "crypto";
+import { ObjectId } from "mongodb";
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -23,12 +25,17 @@ export async function verifyToken(req: AuthRequest, res: Response, next: NextFun
   const token = authHeader.split(" ")[1];
   try {
     const db = await getDb();
-    const session: any = await db.collection("session").findOne({ token })
-      || await db.collection("sessions").findOne({ token });
+const hashed = crypto.createHash("sha256").update(token).digest("hex");
+const session: any = await db.collection("session").findOne({ token })
+  || await db.collection("session").findOne({ token: hashed })
+  || await db.collection("sessions").findOne({ token })
+  || await db.collection("sessions").findOne({ token: hashed });
     if (session) {
       const userId = session.userId || session.user_id;
-      const user: any = await db.collection("user").findOne({ _id: userId as any })
-        || await db.collection("users").findOne({ _id: userId as any });
+      let userIdObj: any = userId;
+      try { if (typeof userId === "string" && userId.length === 24) userIdObj = new ObjectId(userId); } catch {}
+      const user: any = await db.collection("user").findOne({ _id: userIdObj as any })
+        || await db.collection("users").findOne({ _id: userIdObj as any });
       if (user) {
         req.user = { id: String(user._id), sub: String(user._id), name: user.name, email: user.email, role: user.role || "customer" };
         return next();
