@@ -20,15 +20,23 @@ export async function verifyToken(req: AuthRequest, res: Response, next: NextFun
   // 1. Bearer token - JWT
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.split(" ")[1];
-    try {
-      const decoded: any = jwt.verify(token, process.env.BETTER_AUTH_SECRET!);
-      req.user = decoded;
-      return next();
-    } catch {
-      return res.status(401).json({ message: "Invalid token. Please sign in again." });
+  const token = authHeader.split(" ")[1];
+  try {
+    const db = await getDb();
+    const session: any = await db.collection("session").findOne({ token })
+      || await db.collection("sessions").findOne({ token });
+    if (session) {
+      const userId = session.userId || session.user_id;
+      const user: any = await db.collection("user").findOne({ _id: userId as any })
+        || await db.collection("users").findOne({ _id: userId as any });
+      if (user) {
+        req.user = { id: String(user._id), sub: String(user._id), name: user.name, email: user.email, role: user.role || "customer" };
+        return next();
+      }
     }
-  }
+  } catch {}
+  // JWT hole try koro, na hole cookie check e jete dao - ekhane 401 diba na
+}
   // 2. BetterAuth cookie session - client uses credentials: include, no Bearer
   try {
     const cookies = parseCookies(req.headers.cookie);
